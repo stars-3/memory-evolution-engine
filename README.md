@@ -2,6 +2,10 @@
 
 **A framework-independent Python library for the lifecycle of agent experiences.** It helps applications decide which lessons from failures, successes, feedback, and confirmation remain useful over time.
 
+**v0.1 limits:** Retrieval uses literal substring matching; the library targets a single process with low write concurrency and does not extract experiences automatically.
+
+**v0.1 限制：**检索采用字面子串匹配，面向单进程、低写入并发场景，且不会自动抽取经验。
+
 [English](#english) · [中文](#中文)
 
 ## English
