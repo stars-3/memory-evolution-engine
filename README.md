@@ -1,10 +1,8 @@
 # Memory Evolution Engine
 
-**A framework-independent Python library for the lifecycle of agent experiences.** It helps applications decide which lessons from failures, successes, feedback, and confirmation remain useful over time.
+**A framework-independent Python library for the lifecycle of agent experiences.** Turn observed failures and outcomes into reusable lessons, then decide what is worth keeping.
 
-**v0.1 limits:** Retrieval uses literal substring matching; the library targets a single process with low write concurrency and does not extract experiences automatically.
-
-**v0.1 限制：**检索采用字面子串匹配，面向单进程、低写入并发场景，且不会自动抽取经验。
+Applications supply experiences and observed results. The library stores them in SQLite, retrieves them within a scope, tracks evidence of value, reinforces recent use, applies decay, and reports archival candidates under deterministic rules.
 
 [English](#english) · [中文](#中文)
 
@@ -12,9 +10,49 @@
 
 ### Overview
 
-Memory Evolution Engine manages experience records rather than collecting conversations. An application supplies experiences and observed outcomes. The library stores them, tracks evidence of value, applies deterministic reinforcement and decay, and identifies candidates for archival.
+Memory Evolution Engine manages explicit experience records rather than collecting conversations. A `failure_pattern` records what went wrong; a `lesson` records what to do differently. The application can link them and submit evidence when a later outcome shows the lesson was useful.
 
 Version 0.1.0 is an embedded Python 3.11+ package. It uses SQLite and has no runtime dependencies outside the standard library. It does not run an agent or call a model.
+
+**Best for:** an existing agent application that needs an explicit lifecycle for `failure_pattern`, `lesson`, and other experience records.
+
+### Quick Start
+
+Install from a local checkout:
+
+```bash
+python -m pip install .
+```
+
+```python
+from memory_evolution_engine import (
+    Experience, ImpactEvidence, ImpactSource, MemoryEngine, SQLiteStorage,
+)
+
+scope = "agent:demo"
+with SQLiteStorage("memory.db") as storage:
+    memory = MemoryEngine(storage)
+    lesson = memory.remember(Experience(
+        scope=scope,
+        kind="lesson",
+        content="Check idempotency before retrying a write.",
+    ))
+    # The application observed the outcome; the library does not infer it.
+    memory.add_impact_evidence(
+        lesson.id,
+        ImpactEvidence(
+            source=ImpactSource.PREVENTED_FAILURE,
+            description="A later retry did not duplicate the write.",
+            reference="retry-42",
+        ),
+        scope=scope,
+    )
+    print(memory.recall(scope=scope, text="idempotency"))
+```
+
+**v0.1 limits:** Retrieval uses literal substring matching rather than semantic search. The library targets a single process with low write concurrency. The application must enforce access control and supply experiences and outcomes; the library does not extract them automatically.
+
+For local development, install the optional test dependency with `python -m pip install -e ".[test]"`, then run `python -m pytest`.
 
 ### Why
 
@@ -53,29 +91,6 @@ effective_score = confidence × (impact_prior + (1 - impact_prior) × impact)
 ```
 
 The default `impact_prior` is `0.5`, so an unconfirmed new experience does not start with an effective score of zero. This prior is a ranking rule, not impact evidence. Set it to `0` for a purely multiplicative score. Reinforcement adds a configurable step to the *decayed* strength, capped at 1; it does not change impact.
-
-### Quick Start
-
-Install from a local checkout:
-
-```bash
-python -m pip install .
-```
-
-```python
-from memory_evolution_engine import Experience, MemoryEngine, SQLiteStorage
-
-with SQLiteStorage("memory.db") as storage:
-    engine = MemoryEngine(storage)
-    engine.remember(Experience(
-        scope="agent:demo",
-        content="Check whether an operation is idempotent before retrying it.",
-        kind="lesson",
-    ))
-    print(engine.recall(scope="agent:demo", text="idempotent"))
-```
-
-For local development, install the optional test dependency with `python -m pip install -e ".[test]"`, then run `python -m pytest`.
 
 ### Example
 
@@ -135,6 +150,46 @@ Memory Evolution Engine 是一个与 Agent 框架无关的 Python **经验生命
 
 v0.1.0 支持 Python 3.11+，默认使用 SQLite，运行时只依赖 Python 标准库。它不运行 Agent，也不调用模型。
 
+**适合你，如果：**你已有 Agent 应用，希望为 `failure_pattern`、`lesson` 等经验记录增加明确的生命周期管理。
+
+### 快速开始
+
+在本地项目目录安装：
+
+```bash
+python -m pip install .
+```
+
+```python
+from memory_evolution_engine import (
+    Experience, ImpactEvidence, ImpactSource, MemoryEngine, SQLiteStorage,
+)
+
+scope = "agent:demo"
+with SQLiteStorage("memory.db") as storage:
+    memory = MemoryEngine(storage)
+    lesson = memory.remember(Experience(
+        scope=scope,
+        kind="lesson",
+        content="重试写操作前先确认幂等性。",
+    ))
+    # 应用观察到后续结果后提交证据；库不会自行推断。
+    memory.add_impact_evidence(
+        lesson.id,
+        ImpactEvidence(
+            source=ImpactSource.PREVENTED_FAILURE,
+            description="后续重试没有造成重复写入。",
+            reference="retry-42",
+        ),
+        scope=scope,
+    )
+    print(memory.recall(scope=scope, text="幂等性"))
+```
+
+**v0.1 边界：**检索是字面子串匹配，不是语义搜索；面向单进程、低写入并发。应用必须实施访问控制，并负责提交经验和观察结果；库不会自动抽取。
+
+本地开发可运行 `python -m pip install -e ".[test]"` 安装可选测试依赖，再运行 `python -m pytest`。
+
 ### 为什么需要它
 
 保存所有交互并不保证下一次能找到有用的教训。Agent 可能需要识别曾经出现的失败，并找到避免重犯的做法。`failure_pattern` 记录失败方式，`lesson` 记录应该改变的行为；两者可通过 `related_to` 关联。
@@ -172,29 +227,6 @@ impact = min(1, 证据权重之和 × evidence_impact_step)
 ```
 
 `impact_prior` 默认是 `0.5`，让尚未收到反馈的新经验不至于从零分开始。它只是排序先验，不是价值证据；设为 `0` 可使用纯乘法评分。强化会在**已衰减的强度**上增加可配置步长，最高为 1，不改变 impact。
-
-### 快速开始
-
-在本地项目目录安装：
-
-```bash
-python -m pip install .
-```
-
-```python
-from memory_evolution_engine import Experience, MemoryEngine, SQLiteStorage
-
-with SQLiteStorage("memory.db") as storage:
-    engine = MemoryEngine(storage)
-    engine.remember(Experience(
-        scope="agent:demo",
-        content="重试操作前先确认它是否具备幂等性。",
-        kind="lesson",
-    ))
-    print(engine.recall(scope="agent:demo", text="幂等性"))
-```
-
-本地开发可运行 `python -m pip install -e ".[test]"` 安装可选测试依赖，再运行 `python -m pytest`。
 
 ### 示例
 
